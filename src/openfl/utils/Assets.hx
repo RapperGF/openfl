@@ -598,8 +598,7 @@ class Assets
 				{
 					_library = new AssetLibrary();
 					_library.__proxy = library;
-					var unload:Bool = LimeAssets.getLibrary(name) != _library.__proxy;
-					LimeAssets.registerLibrary(name, _library, unload);
+					LimeAssets.registerLibrary(name, _library);
 				}
 			}
 

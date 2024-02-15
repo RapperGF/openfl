@@ -37,6 +37,13 @@ package openfl.display;
 	**/
 	public var SHOW_ALL = 3;
 
+	/**
+		Specifies that the size of the application is maintained when resized 1:1 pixels. 
+		this means if the application is 1280x720 its interal resolution will be kept. 
+		Blurring may appear as the native resoltion is not rescaled. (9.1.0 Legacy Scale Mode)
+	**/
+	public var PIXEL_PERFECT = 4;
+
 	@:from private static function fromString(value:String):StageScaleMode
 	{
 		return switch (value)

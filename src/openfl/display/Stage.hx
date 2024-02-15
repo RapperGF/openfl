@@ -1204,11 +1204,12 @@ class Stage extends DisplayObjectContainer #if lime implements IModule #end
 			case OPENGL, OPENGLES, WEBGL:
 				#if (!disable_cffi && (!html5 || !canvas))
 				context3D = new Context3D(this);
-				#if openfl_dpi_aware
+				/*#if openfl_dpi_aware
 				context3D.configureBackBuffer(windowWidth, windowHeight, 0, true, true, true);
 				#else
 				context3D.configureBackBuffer(stageWidth, stageHeight, 0, true, true, true);
-				#end
+				#end*/
+				context3D.configureBackBuffer(stageWidth, stageHeight, 0, true, true, true);
 				context3D.present();
 				__renderer = new OpenGLRenderer(context3D);
 				#end
@@ -1234,7 +1235,8 @@ class Stage extends DisplayObjectContainer #if lime implements IModule #end
 		if (__renderer != null)
 		{
 			__renderer.__allowSmoothing = (quality != LOW);
-			__renderer.__pixelRatio = #if openfl_disable_hdpi 1 #else window.scale #end;
+			//__renderer.__pixelRatio = #if openfl_disable_hdpi 1 #else window.scale #end;
+			__renderer.__pixelRatio = 1;
 			__renderer.__worldTransform = __displayMatrix;
 			__renderer.__stage = this;
 
@@ -3193,6 +3195,161 @@ class Stage extends DisplayObjectContainer #if lime implements IModule #end
 	#end
 
 	@:noCompletion private function __resize():Void
+		{
+			var cacheWidth = stageWidth;
+			var cacheHeight = stageHeight;
+	
+			var windowWidth = Std.int(window.width * window.scale);
+			var windowHeight = Std.int(window.height * window.scale);
+
+			var pixel_perfect = scaleMode == PIXEL_PERFECT ? true : false;
+	
+			#if (js && html5)
+			__logicalWidth = windowWidth;
+			__logicalHeight = windowHeight;
+			#end
+	
+			__displayMatrix.identity();
+	
+			if (fullScreenSourceRect != null && window.fullscreen)
+			{
+				stageWidth = Std.int(fullScreenSourceRect.width);
+				stageHeight = Std.int(fullScreenSourceRect.height);
+	
+				var displayScaleX = windowWidth / stageWidth;
+				var displayScaleY = windowHeight / stageHeight;
+	
+				__displayMatrix.translate(-fullScreenSourceRect.x, -fullScreenSourceRect.y);
+				__displayMatrix.scale(displayScaleX, displayScaleY);
+	
+				__displayRect.setTo(fullScreenSourceRect.left, fullScreenSourceRect.right, fullScreenSourceRect.top, fullScreenSourceRect.bottom);
+			}
+			else
+			{
+				if (__logicalWidth == 0 && __logicalHeight == 0)
+				{
+					stageWidth = windowWidth;
+					stageHeight = windowHeight;
+				}
+				else
+				{
+					if(pixel_perfect) {
+						stageWidth = __logicalWidth;
+						stageHeight = __logicalHeight;
+					} else {
+						stageWidth = Math.round(windowWidth / window.scale);
+						stageHeight = Math.round(windowHeight / window.scale);
+					}
+
+					switch (scaleMode)
+					{
+						case PIXEL_PERFECT:
+							var scaleX = windowWidth / stageWidth;
+							var scaleY = windowHeight / stageHeight;
+							var targetScale = Math.min(scaleX, scaleY);
+	
+							var offsetX = Math.round((windowWidth - (stageWidth * targetScale)) / 2);
+							var offsetY = Math.round((windowHeight - (stageHeight * targetScale)) / 2);
+	
+							__displayMatrix.scale(targetScale, targetScale);
+							__displayMatrix.translate(offsetX, offsetY);
+							__displayRect.setTo(0, 0, stageWidth, stageHeight);
+
+						case EXACT_FIT:
+							var displayScaleX = windowWidth / stageWidth;
+							var displayScaleY = windowHeight / stageHeight;
+
+							__displayMatrix.scale(displayScaleX, displayScaleY);
+							__displayRect.setTo(0, 0, stageWidth, stageHeight);
+
+						case NO_BORDER:
+							var scaleX = windowWidth / stageWidth;
+							var scaleY = windowHeight / stageHeight;
+
+							var scale = Math.max(scaleX, scaleY);
+
+							var scaledWidth = stageWidth * scale;
+							var scaledHeight = stageHeight * scale;
+
+							var visibleWidth = stageWidth - Math.round((scaledWidth - windowWidth) / scale);
+							var visibleHeight = stageHeight - Math.round((scaledHeight - windowHeight) / scale);
+							var visibleX = Math.round((stageWidth - visibleWidth) / 2);
+							var visibleY = Math.round((stageHeight - visibleHeight) / 2);
+
+							__displayMatrix.translate(-visibleX, -visibleY);
+							__displayMatrix.scale(scale, scale);
+
+							__displayRect.setTo(visibleX, visibleY, visibleWidth, visibleHeight);
+
+						default: // SHOW_ALL
+
+							var scaleX = windowWidth / stageWidth;
+							var scaleY = windowHeight / stageHeight;
+
+							var scale = Math.min(scaleX, scaleY);
+
+							var scaledWidth = stageWidth * scale;
+							var scaledHeight = stageHeight * scale;
+
+							var visibleWidth = stageWidth - Math.round((scaledWidth - windowWidth) / scale);
+							var visibleHeight = stageHeight - Math.round((scaledHeight - windowHeight) / scale);
+							var visibleX = Math.round((stageWidth - visibleWidth) / 2);
+							var visibleY = Math.round((stageHeight - visibleHeight) / 2);
+
+							__displayMatrix.translate(-visibleX, -visibleY);
+							__displayMatrix.scale(scale, scale);
+
+							__displayRect.setTo(visibleX, visibleY, visibleWidth, visibleHeight);
+					}
+				}
+			}
+	
+			if (context3D != null)
+			{
+				if(pixel_perfect) {
+					context3D.configureBackBuffer(windowWidth, windowHeight, 0, true, true, true);
+				} else {
+					#if openfl_dpi_aware
+					context3D.configureBackBuffer(windowWidth, windowHeight, 0, true, true, true);
+					#else
+					context3D.configureBackBuffer(stageWidth, stageHeight, 0, true, true, true);
+					#end
+				}
+			}
+	
+			for (stage3D in stage3Ds)
+			{
+				stage3D.__resize(windowWidth, windowHeight);
+			}
+	
+			if (__renderer != null)
+			{
+				__renderer.__resize(windowWidth, windowHeight);
+			}
+	
+			if (stageWidth != cacheWidth || stageHeight != cacheHeight)
+			{
+				__renderDirty = true;
+				__setTransformDirty();
+	
+				var event:Event = null;
+	
+				#if openfl_pool_events
+				event = Event.__pool.get(Event.RESIZE);
+				#else
+				event = new Event(Event.RESIZE);
+				#end
+	
+				__dispatchEvent(event);
+	
+				#if openfl_pool_events
+				Event.__pool.release(event);
+				#end
+			}
+		}
+	
+
+	/*@:noCompletion private function __resize():Void
 	{
 		var cacheWidth = stageWidth;
 		var cacheHeight = stageHeight;
@@ -3331,7 +3488,7 @@ class Stage extends DisplayObjectContainer #if lime implements IModule #end
 			Event.__pool.release(event);
 			#end
 		}
-	}
+	}*/
 
 	@:noCompletion private function __setLogicalSize(width:Int, height:Int):Void
 	{
